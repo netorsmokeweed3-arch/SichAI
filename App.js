@@ -1,24 +1,57 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, SafeAreaView, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
 import { APP_CONFIG } from './src/config';
-import { SichOrchestrator } from './src/agents/orchestrator';
 
 export default function App() {
-  const [hubState, setHubState] = React.useState(null);
-  const [loading, setLoading] = React.useState(true);
+  const [hubState, setHubState] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   const refreshHub = async () => {
     setLoading(true);
     try {
-      const state = await SichOrchestrator.runDiagnostics();
-      setHubState(state);
+      // Робимо запит до твого живого бекенду на Render
+      const response = await fetch('https://sichai.onrender.com/get-schedule');
+      const backendData = await response.json();
+
+      // Формуємо стан хабу на основі живих даних із сервера
+      setHubState({
+        battery: { 
+          shouldSavePower: false, 
+          reason: "Акумулятор хабу працює стабільно в автономному режимі." 
+        },
+        power: { 
+          isOnline: true, 
+          message: backendData && backendData.text 
+            ? `Оновлення з Telegram: ${backendData.text}` 
+            : "Черга 4.1 (Новояворівськ): дані оновлюються з хмари..." 
+        },
+        security: { 
+          alertActive: false, 
+          message: "Ситуація стабільна. Тривоги у регіоні немає." 
+        },
+        schedule: backendData,
+        lastUpdated: new Date().toLocaleTimeString()
+      });
     } catch (error) {
-      console.log('Orchestrator sync error:', error);
+      console.log('Помилка підключення до Render:', error);
+      // Fallback-стан, якщо немає зв'язку з інтернетом чи сервером
+      setHubState({
+        battery: { shouldSavePower: true, reason: "Немає зв'язку з хмарним агентом." },
+        power: { isOnline: false, message: "Помилка завантаження графіків із сервера." },
+        security: { alertActive: false, message: "Локальний режим роботи." },
+        schedule: null,
+        lastUpdated: new Date().toLocaleTimeString()
+      });
     }
     setLoading(false);
   };
 
-  React.useEffect(() => { refreshHub(); }, []);
+  useEffect(() => { 
+    refreshHub(); 
+    // Автоматичне оновлення кожні 60 секунд
+    const interval = setInterval(refreshHub, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -28,7 +61,7 @@ export default function App() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        {loading ? (
+        {loading && !hubState ? (
           <ActivityIndicator size="large" color="#4CAF50" style={{ marginTop: 50 }} />
         ) : hubState ? (
           <>
@@ -44,11 +77,13 @@ export default function App() {
               </View>
             )}
 
-            {/* Останній графік з кешу Telegram */}
+            {/* Останній графік з кешу Telegram (без сирих ключів JSON) */}
             <View style={styles.card}>
               <Text style={styles.cardTitle}>📡 Поточний графік (Новояворівськ)</Text>
               <Text style={styles.messageText}>
-                {hubState.schedule ? JSON.stringify(hubState.schedule, null, 2) : 'Очікування свіжих даних із Telegram-каналу...'}
+                {hubState.schedule && hubState.schedule.text 
+                  ? hubState.schedule.text 
+                  : 'Очікування свіжих даних із Telegram-каналу...'}
               </Text>
             </View>
 

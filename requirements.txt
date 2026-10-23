@@ -1,3 +1,4 @@
-telethon
-requests
-flask
+Flask
+Telethon
+Pillow
+pytesseract

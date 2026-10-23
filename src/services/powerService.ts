@@ -8,20 +8,37 @@ export interface PowerStatus {
   message: string;
 }
 
-// Початковий сервіс-агент для перевірки стану світла
+// Сервіс-агент для перевірки стану світла через хмарний бекенд на Render
 export class PowerAgent {
   static async checkQueueStatus(): Promise<PowerStatus> {
-    // Тут ми згодом зробимо запит до парсера або локального кешу,
-    // а поки агент видає актуальну логіку для черги 4.1
     const { queue, city } = APP_CONFIG.powerGrid;
-    
-    // Імітація розумної перевірки (можеш підв'язати сюди парсинг сайту обленерго)
+
+    try {
+      // Робимо реальний запит до твого Telegram-моніторингового сервера
+      const response = await fetch('https://sichai.onrender.com/get-schedule');
+      const data = await response.json();
+
+      // Якщо сервер повернув дані графіку
+      if (data && data.schedule) {
+        return {
+          queue,
+          city,
+          isOnline: data.isOnline ?? true,
+          nextSwitchTime: data.nextSwitchTime || "16:00",
+          message: `Черга ${queue} (${city}): ${data.schedule}`
+        };
+      }
+    } catch (error) {
+      console.log('Помилка запиту до Render-сервера у PowerAgent:', error);
+    }
+
+    // Fallback-значення, якщо сервер недоступний або ще не відповів
     return {
       queue,
       city,
-      isOnline: true, 
+      isOnline: true,
       nextSwitchTime: "16:00",
-      message: `Черга ${queue} (${city}): світло є. Наступне планове відключення о 16:00.`
+      message: `Черга ${queue} (${city}): світло є. (Очікування синхронізації з хмарою)`
     };
   }
 }
